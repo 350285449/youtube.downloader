@@ -1,43 +1,47 @@
-# for 1080 p only
-
+from flask import Flask, render_template, request, send_file
 from pytube import YouTube
-import os
 from moviepy.editor import VideoFileClip, AudioFileClip
+import os
+import uuid
+
+app = Flask(__name__)
 
 def download_1080p_video(url):
-    try:
-        yt = YouTube(url)
-        print(f"Title: {yt.title}")
-        print(f"Length: {yt.length // 60} minutes")
+    yt = YouTube(url)
+    video_stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
+    audio_stream = yt.streams.filter(only_audio=True, file_extension='mp4').first()
 
-        video_stream = yt.streams.filter(res="1080p", progressive=False, file_extension='mp4').first()
-        audio_stream = yt.streams.filter(only_audio=True, file_extension='mp4').first()
+    if not video_stream or not audio_stream:
+        return None
 
-        if not video_stream or not audio_stream:
-            print("1080p video or audio stream not found.")
-            return
+    unique_id = str(uuid.uuid4())
+    video_path = f"video_{unique_id}.mp4"
+    audio_path = f"audio_{unique_id}.mp4"
+    final_path = f"final_{unique_id}.mp4"
 
-        print("Downloading video...")
-        video_file = video_stream.download(filename="video.mp4")
+    video_stream.download(filename=video_path)
+    audio_stream.download(filename=audio_path)
 
-        print("Downloading audio...")
-        audio_file = audio_stream.download(filename="audio.mp4")
+    final_clip = VideoFileClip(video_path)
+    final_audio = AudioFileClip(audio_path)
+    final_clip = final_clip.set_audio(final_audio)
+    final_clip.write_videofile(final_path, codec='libx264', audio_codec='aac')
 
-        print("Merging video and audio...")
-        final_clip = VideoFileClip("video.mp4")
-        final_audio = AudioFileClip("audio.mp4")
-        final_clip = final_clip.set_audio(final_audio)
-        final_clip.write_videofile("final_video.mp4", codec='libx264', audio_codec='aac')
+    os.remove(video_path)
+    os.remove(audio_path)
 
-        print("Cleanup...")
-        os.remove("video.mp4")
-        os.remove("audio.mp4")
+    return final_path
 
-        print("Download and merge completed! Saved as final_video.mp4")
-
-    except Exception as e:
-        print(f"Error: {e}")
+@app.route("/", methods=["GET", "POST"])
+def index():
+    if request.method == "POST":
+        url = request.form["url"]
+        final_file = download_1080p_video(url)
+        if final_file:
+            return send_file(final_file, as_attachment=True)
+        else:
+            return "Could not download in 1080p."
+    return render_template("index.html")
 
 if __name__ == "__main__":
-    video_url = input("Enter the YouTube video URL: ")
-    download_1080p_video(video_url)
+    app.run()
