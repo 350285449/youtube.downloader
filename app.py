@@ -1,6 +1,6 @@
 from flask import Flask, render_template, request, send_file
 from pytube import YouTube
-from moviepy.editor import VideoFileClip, AudioFileClip
+import subprocess
 import os
 import uuid
 
@@ -21,14 +21,16 @@ def merge_streams(video_stream, audio_stream):
     video_stream.download(filename=video_path)
     audio_stream.download(filename=audio_path)
 
-    video_clip = VideoFileClip(video_path)
-    audio_clip = AudioFileClip(audio_path)
-    final_clip = video_clip.set_audio(audio_clip)
-    final_clip.write_videofile(final_path, codec="libx264", audio_codec="aac")
-
-    video_clip.close()
-    audio_clip.close()
-    final_clip.close()
+    command = [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-i", audio_path,
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-strict", "experimental",
+        final_path
+    ]
+    subprocess.run(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
     os.remove(video_path)
     os.remove(audio_path)
@@ -39,18 +41,15 @@ def download_video(url):
     try:
         yt = YouTube(clean_url(url))
 
-        # Try 1080p with separate streams
         video_stream = yt.streams.filter(res="1080p", progressive=False, file_extension="mp4").first()
         audio_stream = yt.streams.filter(only_audio=True, file_extension="mp4").first()
         if video_stream and audio_stream:
             return merge_streams(video_stream, audio_stream)
 
-        # Fallback: highest quality non-progressive
         video_stream = yt.streams.filter(progressive=False, file_extension="mp4").order_by("resolution").desc().first()
         if video_stream and audio_stream:
             return merge_streams(video_stream, audio_stream)
 
-        # Fallback: highest quality progressive
         stream = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
         if stream:
             fallback_path = os.path.join(DOWNLOAD_DIR, f"video_{uuid.uuid4()}.mp4")
