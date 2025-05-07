@@ -41,19 +41,23 @@ def download_video(url):
     try:
         yt = YouTube(clean_url(url))
 
+        # Try 1080p adaptive stream
         video_stream = yt.streams.filter(res="1080p", progressive=False, file_extension="mp4").first()
         audio_stream = yt.streams.filter(only_audio=True, file_extension="mp4").first()
         if video_stream and audio_stream:
             return merge_streams(video_stream, audio_stream)
 
-        video_stream = yt.streams.filter(progressive=False, file_extension="mp4").order_by("resolution").desc().first()
-        if video_stream and audio_stream:
-            return merge_streams(video_stream, audio_stream)
+        # Try fallback adaptive streams (720p, 480p, 360p)
+        for res in ["720p", "480p", "360p"]:
+            video_stream = yt.streams.filter(res=res, progressive=False, file_extension="mp4").first()
+            if video_stream and audio_stream:
+                return merge_streams(video_stream, audio_stream)
 
-        stream = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
-        if stream:
+        # Try progressive streams if no adaptive worked
+        fallback_stream = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
+        if fallback_stream:
             fallback_path = os.path.join(DOWNLOAD_DIR, f"video_{uuid.uuid4()}.mp4")
-            stream.download(filename=fallback_path)
+            fallback_stream.download(filename=fallback_path)
             return fallback_path
 
         return None
