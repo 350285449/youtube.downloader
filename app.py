@@ -1,10 +1,7 @@
-from flask import Flask, render_template, request, send_file
 from pytube import YouTube
 import subprocess
 import os
 import uuid
-
-app = Flask(__name__)
 
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
@@ -40,20 +37,14 @@ def merge_streams(video_stream, audio_stream):
 def download_video(url):
     try:
         yt = YouTube(clean_url(url))
-
-        # Try 1080p adaptive stream
-        video_stream = yt.streams.filter(res="1080p", progressive=False, file_extension="mp4").first()
         audio_stream = yt.streams.filter(only_audio=True, file_extension="mp4").first()
-        if video_stream and audio_stream:
-            return merge_streams(video_stream, audio_stream)
 
-        # Try fallback adaptive streams (720p, 480p, 360p)
-        for res in ["720p", "480p", "360p"]:
+        for res in ["1080p", "720p", "480p", "360p"]:
             video_stream = yt.streams.filter(res=res, progressive=False, file_extension="mp4").first()
             if video_stream and audio_stream:
                 return merge_streams(video_stream, audio_stream)
 
-        # Try progressive streams if no adaptive worked
+        # Fallback to progressive
         fallback_stream = yt.streams.filter(progressive=True, file_extension="mp4").order_by("resolution").desc().first()
         if fallback_stream:
             fallback_path = os.path.join(DOWNLOAD_DIR, f"video_{uuid.uuid4()}.mp4")
@@ -66,20 +57,13 @@ def download_video(url):
         print("Download failed:", e)
         return None
 
-@app.route("/", methods=["GET", "POST"])
-def index():
-    if request.method == "POST":
-        url = request.form.get("url", "").strip()
-        if not url or ("youtube.com" not in url and "youtu.be" not in url):
-            return "Invalid or empty YouTube URL."
-
+if __name__ == "__main__":
+    url = input("Enter YouTube URL: ").strip()
+    if not url or ("youtube.com" not in url and "youtu.be" not in url):
+        print("Invalid or empty YouTube URL.")
+    else:
         final_file = download_video(url)
         if final_file:
-            return send_file(final_file, as_attachment=True)
+            print("Downloaded to:", final_file)
         else:
-            return "Could not download in 1080p or fallback resolution."
-
-    return render_template("index.html")
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=81)
+            print("Could not download in 1080p or fallback resolution.")
